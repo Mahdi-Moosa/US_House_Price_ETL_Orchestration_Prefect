@@ -1,7 +1,34 @@
 #!/usr/bin/env python
 # coding: utf-8
-# Steps of the data pipline for the US house data warehouse is described in: https://github.com/Mahdi-Moosa/US_Housing_Price_ETL
 
+# # UAD (Uniform Appraisal Data) Data ETL
+# 
+# Federal Housing Finance Agency (FHFA) releases housing appraisal dataset (anually/quarterly). This dataset is aggregated from home value appraisals for refinance and/or purchase. UAD dataset can provide insights into local appraised house prices.
+# 
+# Obviously there are some caveats to using UAD data as a represntative for house prices. See the following link:
+# 
+# https://www.fhfa.gov/Media/Blog/Pages/Exploring-Appraisal-Bias-Using-UAD-Aggregate-Statistics.aspx
+# 
+# **Notes on the raw data**
+# 
+# * UAD Data is aggregated by census tract.
+# * There were some updates in census tract 2010 vs. census tract 2020.
+# * Mapping between zip code and census tract is not one-to-one.
+# 
+# ## Based on the aforementioned facts, following steps were performed to get approximate home appraisal values for each zip codes:
+# 
+# * UAD dataset gives data based on census tract 2020 census tract.
+# * HUD provides map from census tract 2010 to US zip codes.
+# * The relationship between census tract 2010 to census tract 2020 is provided by census.gov.
+# 
+# * We will map (UAD dataset census tract 2020) to (census tract 2010) to (USPS Zip Code). ***These mappings are not one-to-one. To simplify our analysis, we only keep the first x-to-y map and drop other x-to-y1, x-to-y2 maps, essentailly making the relationship one-to-one. Our justification is - cenusus tracts will map to nearby zip codes and therefore, even if we are wrong in our x-to-y mapping, the close vicinity of y1, y2 still allows us to approximate localized home value appraisal.***
+
+# ## Downloading relevant data files (if not present)
+
+# In[1]:
+
+
+# Function to check for data file(s) and fetch data them, if not present.
 
 import requests, os, time
 from pathlib import Path
@@ -53,6 +80,27 @@ def fetch_file(url, folder_name, presence_check=True,  fname=None):
     
     if os.path.exists(f'{fpath}'): #TODO: File size check validation.
         return print(f'File download succesful for {fname}')
+
+
+# # Get UAD urls to download
+
+# config = configparser.ConfigParser()
+# config.read('hpa.cfg')
+
+# uad_url = config.get('UAD', 'uad_url')
+# tract_2_zip_url = config.get('UAD', 'tract_2_zip_url')
+# tract20_10_map_url = config.get('UAD', 'tract20_10_map_url')
+# zip_url = config.get('UAD', 'zip_url')
+
+
+# # Download URLs 
+# fetch_file(folder_name='data/raw_data/FHFA-UAD',url=uad_url)
+# fetch_file(folder_name='data/raw_data/HUD-USPS', url=tract_2_zip_url)
+# fetch_file(folder_name='data/raw_data/census', url=tract20_10_map_url)
+# fetch_file(folder_name='data/raw_data/geonames', url=zip_url)
+
+
+# ## Loading Files - Data Files
 
 @task(log_prints=True)
 def transform_UAD(raw_data_path_UAD : str = 'data/raw_data/FHFA-UAD/UADAggs_tract.zip', 
@@ -180,6 +228,57 @@ def save_pd_to_parquet(dtframe : pd.DataFrame, fldr_name : str, table_name : str
     dtframe.to_parquet(path=f'{fldr_name}/{table_name}/{table_name}_{cur_time}.parquet')
     return print(f'Table:  {table_name} saved.') 
 
+
+# ## Exploration Final UAD DF Merged
+
+# uad_df_merged[uad_df_merged.SERIESID == 'MEAN'].PURPOSE.value_counts()
+
+
+# As per documentation, Purchase + Refinance = Both.
+# 
+# However, it appears that there is an imbalance. I have found some entries with only *Both* values.
+# Perhaps this is due to:
+# * Record suppression - to make records anonymous
+# * Incomplete data - data does not distinguish between Purchase/Refinance or suggest both!
+# 
+# **For our puroposes, we should get both only. At least, initially!**
+
+# ## Selecting relevant columns, and save final merged UAD table
+
+
+# Checking table statistics
+# count_table.drop_duplicates(subset=['zip', 'YEAR']).shape[0]/count_table.drop_duplicates(subset=['GEOID_TRACT_20', 'YEAR']).shape[0]
+
+
+# Conclusion: ~75% of the zip codes repeated. Perhaps, this is due to the drop_duplicates method applied in the track_to_zip dataframe.
+
+
+
+
+
+
+# **NOTE**: Caveats on census tract to zip code mapping.
+# 
+# The relationship between census tract and zip code is not often one-to-one. Here though, for our purposes, we approximated the relationship to be one-to-one (and dropped *duplicated* relations). Justifications:
+# 
+# * We are interested in local prices. For one-to-many census tract to zip code relations, multiple zip codes that map to the same census tract are adjacent. For our purposes, mis-assignment of a zip code to its neigbouring one - while not ideal - is not detrimental.
+
+# # Realtor Data
+# 
+# Realtor.com provides real estate data *monthly/weekly* at https://www.realtor.com/research/data/.
+# 
+# Here, we are retrieving the monthly data and convert that into yearly data for each of the zip codes.
+
+# ## Download Realtor Data (if not present already)
+
+# In[15]:
+
+
+
+
+
+# In[16]:
+
 @task(log_prints=True)
 def transform_realtor(raw_data_path_realtor : str = 'data/raw_data/realtor_data/RDC_Inventory_Core_Metrics_Zip_History.csv') -> pd.DataFrame:
     # Reading and transforming data from downoaded zip file
@@ -218,6 +317,24 @@ def transform_realtor(raw_data_path_realtor : str = 'data/raw_data/realtor_data/
     return realtor_df_slice_agg
 
 
+# # Redfin data
+# 
+# Redfin also releases data on housing market at https://www.redfin.com/news/data-center/.
+
+# In[19]:
+
+
+
+
+config = configparser.ConfigParser()
+config.read('hpa.cfg')
+
+# Download redfin data
+
+
+
+# In[20]:
+
 @task(log_prints = True)
 def transform_redfin(raw_data_path_redfin : str = 'data/raw_data/redfin_data/zip_code_market_tracker.tsv000.gz') -> pd.DataFrame:
     # Reading redfin data from downloaded compressed file.
@@ -244,8 +361,26 @@ def transform_redfin(raw_data_path_redfin : str = 'data/raw_data/redfin_data/zip
                                                                                                         )
     return redfin_df_zip_agg
 
+# # Zillow Data
+# 
+# Zillow releases research data at https://www.zillow.com/research/data/.
+# 
+# Zillow House Value Index (dollar-dominated) seemed the most comprehsive for zip-code-based dataset. If one is only interested in metro areas, they have more options.
+
+# In[22]:
+
+
+import configparser
+
+config = configparser.ConfigParser()
+config.read('hpa.cfg')
+
+# Get zillow data
+
+
+
 @task(log_prints = True)
-def transform_zillow(raw_data_path_zillow : str = 'data/raw_data/zillow_data/Zip_zhvi_uc_sfrcondo_tier_0.33_0.67_sm_sa_month.csv') -> (pd.DataFrame, pd.DataFrame):
+def transform_zillow(raw_data_path_zillow : str = 'data/raw_data/zillow_data/Zip_zhvi_uc_sfrcondo_tier_0.33_0.67_sm_sa_month.csv') -> pd.DataFrame:
     # Reading zillow Data from downloaded file
     import pandas as pd
     zillow_zhvi_df = pd.read_csv(raw_data_path_zillow)
@@ -262,11 +397,18 @@ def transform_zillow(raw_data_path_zillow : str = 'data/raw_data/zillow_data/Zip
 
     # Aggregate data based on zip code and year
     zillow_zhvi_zip_agg = zillow_zhvi_df_slice.groupby(by=['zip', zillow_zhvi_df_slice.date.dt.year]).mean()
+    return zillow_zhvi_zip_agg
 
-    # Get zipcode to city-metro map
-    zillow_zhvi_df_slice_zip_unduplicated = zillow_zhvi_df_slice.drop_duplicates(subset=['zip'])
-
-    return zillow_zhvi_zip_agg, zillow_zhvi_df_slice_zip_unduplicated
+# # Aggregating Zip-Price Data from All Sources
+# 
+# Extracted and transformed data from four sources are loaded into the final table:
+# 
+# * Apprisal data from FHFA
+# * Research data from redfin
+# * Research data from realtor
+# * Research data from Zillow 
+# 
+# The final table is saved as a parquet file.
 
 @task(log_prints = True)
 def transform_zipcode(raw_data_path_zipcode : str = 'data/raw_data/geonames/allCountries.zip') -> pd.DataFrame:
@@ -334,7 +476,7 @@ def house_price_tables(file_with_configs : str = 'hpa.cfg') -> None:
 
     zillow_url = config.get('ZILLOW', 'zillow_url')
     fetch_file(url=zillow_url, folder_name='data/raw_data/zillow_data/', fname='Zip_zhvi_uc_sfrcondo_tier_0.33_0.67_sm_sa_month.csv')
-    zillow_zhvi_zip_agg, zillow_zhvi_df_slice_zip_unduplicated = transform_zillow()
+    zillow_zhvi_zip_agg = transform_zillow()
 
     # Harmonizing column headers for joining
     multi_index_names = ['zip', 'year']
@@ -362,8 +504,8 @@ def house_price_tables(file_with_configs : str = 'hpa.cfg') -> None:
     zip_url = config.get('ZIPCODE', 'zip_url') 
     fetch_file(url=zip_url, folder_name='data/raw_data/geonames/')
     us_postal_codes = transform_zipcode()
-    
     # Adding Metro and City names (where present in the Zillow table)
+    zillow_zhvi_df_slice_zip_unduplicated = zillow_zhvi_zip_agg.reset_index().drop_duplicates(subset=['zip'])
     print(f'Columns available in the table: {zillow_zhvi_df_slice_zip_unduplicated.columns}')
     us_postal_codes_with_names = pd.merge(us_postal_codes, zillow_zhvi_df_slice_zip_unduplicated[[ 'zip','metro', 'county']], on='zip', how='left')
 
@@ -384,3 +526,207 @@ def house_price_etl_flow() -> None:
 
 if __name__ == "__main__":
     house_price_etl_flow()
+
+# # Zip Code Details
+# 
+# Source of data: http://download.geonames.org/export/zip/
+# 
+# This table provides lattitude, longitude of each zip codes. This table can be used to map zip code(s) to specific lattitude(s), longitude(s)
+
+
+
+# # # Saving Data to AWS S3
+
+# # In[30]:
+
+
+# import configparser
+# import boto3
+# import awswrangler as wr
+
+# aws_config = configparser.ConfigParser()
+# aws_config.read('aws.cfg')
+# ACCESS_ID = aws_config.get('AWS', 'AWS_ACCESS_KEY_ID')
+# ACCESS_KEY = aws_config.get('AWS', 'AWS_SECRET_ACCESS_KEY')
+# out_s3_dir = aws_config.get('AWS', 'OUTPUT_S3_BUCKET')
+
+# my_session = boto3.Session(
+#                             aws_access_key_id=ACCESS_ID,
+#                             aws_secret_access_key=ACCESS_KEY,
+#                             region_name="us-east-2"
+#                           )
+
+# def save_parquet_to_s3(df, s3_bucket, folder_name, file_name, boto_session):
+#     """
+#     Input:
+#         df: dataframe to write
+#         s3_bucket: destination s3_bucket
+#         folder_name: name of the folder where the output parquet file will be saved.
+#         file_name: name of the parquet file
+    
+#     """
+#     out_path = s3_bucket + folder_name + '/' + file_name
+#     wr.s3.to_parquet(
+#                     df=df,
+#                     path=out_path, 
+#                     boto3_session = boto_session,
+#                 )
+#     return wr.s3.does_object_exist(out_path, boto3_session=boto_session)
+
+
+# # In[31]:
+
+
+# # # Saving finals table to Amazon S3 as parquet file
+
+# save_parquet_to_s3(df=zip_price_master_df.reset_index(), s3_bucket=out_s3_dir, folder_name='etl_data/zip_year_house_price_table', file_name='house_price_table.parquet', boto_session=my_session) # Seems there is some issues with writing multi-index df using awswrangler
+# save_parquet_to_s3(df=us_postal_codes_with_names, s3_bucket=out_s3_dir, folder_name='etl_data/zipcode_table', file_name='zipcode_table.parquet', boto_session=my_session)
+
+
+# # In[32]:
+
+
+# # https://aws-sdk-pandas.readthedocs.io/en/stable/stubs/awswrangler.s3.read_parquet.html
+
+# house_price_s3_df = wr.s3.read_parquet(path=out_s3_dir + 'etl_data/zip_year_house_price_table/house_price_table.parquet', boto3_session=my_session, map_types=False)
+# zip_s3_df = wr.s3.read_parquet(path=out_s3_dir + 'etl_data/zipcode_table/zipcode_table.parquet', boto3_session=my_session, map_types=False)
+
+
+# # In[33]:
+
+
+# house_price_s3_df.set_index(['zip', 'year'])
+
+
+# # # Saving Data to Redshift as tables
+
+# # In[34]:
+
+
+# # Importing configurations to access AWS resources.
+# import configparser
+
+# aws_config = configparser.ConfigParser()
+# aws_config.read('aws.cfg')
+# ACCESS_ID = aws_config.get('AWS', 'AWS_ACCESS_KEY_ID')
+# ACCESS_KEY = aws_config.get('AWS', 'AWS_SECRET_ACCESS_KEY')
+# out_s3_dir = aws_config.get('AWS', 'OUTPUT_S3_BUCKET')
+# redshift_host = aws_config.get('REDSHIFT', 'HOST')
+# redshift_database = aws_config.get('REDSHIFT', 'DATABASE')
+# redshift_database_schema = aws_config.get('REDSHIFT', 'SCHEMA')
+# redshift_user = aws_config.get('REDSHIFT', 'REDSHIFT_USER')
+# redshift_password = aws_config.get('REDSHIFT', 'REDSHIFT_PASSWORD')
+
+
+# # In[35]:
+
+
+# # Redshift connector for awswrangler
+# # https://docs.aws.amazon.com/redshift/latest/mgmt/python-connect-examples.html
+
+# import redshift_connector
+# conn = redshift_connector.connect(
+#      host= redshift_host, #'examplecluster.abc123xyz789.us-west-1.redshift.amazonaws.com',
+#      database= redshift_database, #  'dev',
+#      user= redshift_user, #'awsuser',
+#      password= redshift_password, #'my_password'
+#   )
+
+# cursor = conn.cursor()
+
+
+# # In[43]:
+
+
+# import awswrangler as wr
+
+# # Copy zip code table to redshift database. Note: Data is staged in S3 as an intermediate step.
+# wr.redshift.copy(df=us_postal_codes_with_names,
+#                 con=conn,
+#                 path= out_s3_dir + 'empty_dir/',
+#                 table='us_postal_code_table',
+#                 boto3_session=my_session,
+#                 schema = redshift_database_schema,
+#                 sortkey=['zip'],
+#                 mode='overwrite'
+#                 )
+
+
+# # In[44]:
+
+
+# # Copy zip house price table to redshift database. Note: Data is staged in S3 as an intermediate step.
+# wr.redshift.copy(df=zip_price_master_df.reset_index(),
+#                 con=conn,
+#                 path= out_s3_dir + 'empty_dir/',
+#                 table='house_price_table',
+#                 boto3_session=my_session,
+#                 schema = redshift_database_schema,
+#                 sortkey=['zip'],
+#                 mode='overwrite'
+#                 )
+
+
+# # In[48]:
+
+
+# # Check redshift database
+
+# sql_query = """SELECT l.zip , l.year, l.zhvi_usd_dominated_zillow, r.city, r.metro, r.county
+# FROM (select zip, year, zhvi_usd_dominated_zillow from house_price_table where zip= 77030) as l left join us_postal_code_table r
+# on l.zip = r.zip ORDER BY year"""
+
+# wr.redshift.read_sql_query(
+#                             sql = sql_query, #'SELECT count(*) from house_price_table limit 15', 
+#                             con= conn
+#                             )
+
+
+# # In[50]:
+
+
+# conn.close()
+
+
+# # # Saved file validity check
+
+# # In[55]:
+
+
+# house_price_etl_data_path = 'data/etl_data/zip_year_house_price_table/house_price_table/'
+# zipcode_etl_data_path = 'data/etl_data/zipcode_table/zipcode_table/'
+
+
+# # In[56]:
+
+
+# def data_validity_check(data_path):
+#     import pandas as pd
+#     try:
+#         dataframe = pd.read_parquet(path=data_path)
+#     except:
+#         raise FileNotFoundError(f'File not present at {data_path}')
+#     df_length = dataframe.shape[0]
+#     if df_length == 0:
+#         raise ValueError('Dataframe seems to be empty! .shape[0] gave length of 0!!!')
+#     elif (dataframe.isnull().sum() == df_length).sum() >0 :
+#         raise ValueError('At least one of the columns have all Null values.')
+#     else:
+#         return print(f"No errors raised for parquet data at {data_path}. \nLooks good :)")
+
+
+# # In[57]:
+
+
+# data_validity_check(house_price_etl_data_path)
+
+
+# # In[58]:
+
+
+# data_validity_check(zipcode_etl_data_path)
+
+
+
+
+
