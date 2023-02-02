@@ -225,7 +225,7 @@ def transform_realtor(raw_data_path_realtor : str = 'data/raw_data/realtor_data/
 def transform_redfin(raw_data_path_redfin : str = 'data/raw_data/redfin_data/zip_code_market_tracker.tsv000.gz') -> pd.DataFrame:
     # Reading redfin data from downloaded compressed file.
     # Choosing relevant columns
-    column_subset = ['period_end', 'property_type', 'median_sale_price', 'median_list_price', 
+    column_subset = ['period_end', 'median_sale_price', 'median_list_price', 
                     'median_ppsf', 'homes_sold', 'pending_sales', 'new_listings',  'inventory',
                     'avg_sale_to_list', 'region' ]
     
@@ -234,6 +234,7 @@ def transform_redfin(raw_data_path_redfin : str = 'data/raw_data/redfin_data/zip
     # Data reformating/ type conversion
     redfin_df['zip'] = redfin_df.region.str.split(': ', expand=True)[1].astype('int')
     redfin_df.period_end = pd.to_datetime(redfin_df.period_end)
+    redfin_df.drop(columns='region', inplace=True)
 
     # Aggregating data on zip code, year.
     redfin_df_zip_agg = redfin_df.groupby(by=['zip', redfin_df.period_end.dt.year]).agg(  median_sale_price = ('median_sale_price', 'mean'),
