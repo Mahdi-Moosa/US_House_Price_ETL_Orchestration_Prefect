@@ -388,16 +388,21 @@ def write_to_gcs(file_path: str) -> None:
         description = "This flow orchestrates the house price ETL pipeline.",
         log_prints = True
     )
-def house_price_etl_flow() -> None:
+def house_price_etl_flow(gcs_uplaod_flag : bool = True) -> None:
     """ The main ETL pipeline"""
     # uad_table_etl()
     # print('UAD Table ETL Complete.')
     house_price_tables()
     print('House Price ETL complete. \nRelevant tables are saved as parquet file(s) locally.')
-    folders_to_upload = ['data/etl_data/zipcode_table', 'data/etl_data/uad_appraisal']
-    [write_to_gcs(pth) for pth in folders_to_upload]
+    if gcs_uplaod_flag:
+        print('Files will be uploaded to gcs-bucket.')
+        folders_to_upload = ['data/etl_data/zipcode_table', 'data/etl_data/uad_appraisal']
+        [write_to_gcs(pth) for pth in folders_to_upload]
+        print('File upload to gcs-bucket.')
+    else:
+        print('GCS bucket upload flag is false. Files will not be uploaded to gcs-bucket.')
 
 if __name__ == "__main__":
-    house_price_etl_flow()
+    house_price_etl_flow(gcs_uplaod_flag = False)
 
 print(f'Total run time = {datetime.now() - start_time}')
