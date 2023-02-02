@@ -14,6 +14,7 @@ from datetime import timedelta
 import configparser
 from functools import reduce
 from datetime import datetime
+from prefect_gcp.cloud_storage import GcsBucket
 
 start_time = datetime.now()
 
@@ -373,14 +374,27 @@ def house_price_tables(file_with_configs : str = 'hpa.cfg') -> None:
     out_dir = 'data/etl_data/zipcode_table'
     save_pd_to_parquet(dtframe=us_postal_codes_with_names, fldr_name=out_dir, table_name='zipcode_table')
 
+@flow(log_prints=True)
+def write_to_gcs(file_path: str) -> None:
+    """Flow to upload files to GCS bucket.
+    Input:
+        Patht to file(s) to be uploaded to GCS-bucket. The same (relative) path structure will also be utilized as to_path in gcs-bucket."""
+    dataset_file = f"{file_path}"
+    gcs_block = GcsBucket.load("de-zoomcamp-gcs") 
+    gcs_block.upload_from_folder(from_folder=file_path, to_folder=file_path)
+
 @flow(name="Main ETL Flow",
         description = "This flow orchestrates the house price ETL pipeline.",
         log_prints = True
     )
 def house_price_etl_flow() -> None:
     """ The main ETL pipeline"""
+    # uad_table_etl()
+    # print('UAD Table ETL Complete.')
     house_price_tables()
-    print('House Price ETL complete. \nRelevant tables are saved as parquet file(s).')
+    print('House Price ETL complete. \nRelevant tables are saved as parquet file(s) locally.')
+    folders_to_upload = ['data/etl_data/zipcode_table', 'data/etl_data/uad_appraisal']
+    [write_to_gcs(pth) for pth in folders_to_upload]
 
 if __name__ == "__main__":
     house_price_etl_flow()
