@@ -7,4 +7,6 @@
 
 ## Schematic outline of the prefect orchestration:
 
+*This representation is approximate. Needs some updating to accurately represnt the ETL pipeline.*
+
 ![My Image](images/Prefect_Scheme.png)
