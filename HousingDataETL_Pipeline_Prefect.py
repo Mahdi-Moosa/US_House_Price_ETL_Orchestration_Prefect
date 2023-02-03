@@ -15,6 +15,7 @@ import configparser
 from functools import reduce
 from datetime import datetime
 from prefect_gcp.cloud_storage import GcsBucket
+from prefect_gcp import GcpCredentials
 
 start_time = datetime.now()
 
@@ -384,11 +385,29 @@ def write_to_gcs(file_path: str) -> None:
     gcs_block = GcsBucket.load("de-zoomcamp-gcs") 
     gcs_block.upload_from_folder(from_folder=file_path, to_folder=file_path)
 
+@task(log_prints = True)
+def write_2_bq(file_path: str) -> None:
+    """Write DataFrame to BiqQuery"""
+
+    df = pd.read_parquet(file_path)
+    df = df.drop_duplicates().reset_index()
+
+    gcp_credentials_block = GcpCredentials.load("de-zoomcamp-creds")
+    t_name = file_path.split('/')[-1]
+
+    df.to_gbq(
+        destination_table=f"dezoomcamp.{t_name}",
+        project_id="de-zoomcamp-mmm",
+        credentials=gcp_credentials_block.get_credentials_from_service_account(),
+        chunksize=500_000,
+        if_exists="append",
+    )
+
 @flow(name="Main ETL Flow",
         description = "This flow orchestrates the house price ETL pipeline.",
         log_prints = True
     )
-def house_price_etl_flow(gcs_uplaod_flag : bool = True) -> None:
+def house_price_etl_flow(gcs_uplaod_flag : bool = True, big_query_flag : bool = True) -> None:
     """ The main ETL pipeline"""
     # uad_table_etl()
     # print('UAD Table ETL Complete.')
@@ -396,13 +415,18 @@ def house_price_etl_flow(gcs_uplaod_flag : bool = True) -> None:
     print('House Price ETL complete. \nRelevant tables are saved as parquet file(s) locally.')
     if gcs_uplaod_flag:
         print('Files will be uploaded to gcs-bucket.')
-        folders_to_upload = ['data/etl_data/zipcode_table', 'data/etl_data/uad_appraisal']
+        folders_to_upload = ['data/etl_data/zipcode_table/zipcode_table', 'data/etl_data/uad_appraisal/zip_uad_table']
         [write_to_gcs(pth) for pth in folders_to_upload]
         print('File upload to gcs-bucket.')
     else:
         print('GCS bucket upload flag is false. Files will not be uploaded to gcs-bucket.')
+    if big_query_flag:
+        print('Initiating data write to Google BigQuery')
+        folders_to_upload = ['data/etl_data/zipcode_table/zipcode_table', 'data/etl_data/zip_year_house_price_table/house_price_table']
+        [write_2_bq(pth) for pth in folders_to_upload]
+        print('Successfully loaded data in Google BigQuery Data Warehouse.')
 
 if __name__ == "__main__":
-    house_price_etl_flow(gcs_uplaod_flag = False)
+    house_price_etl_flow(gcs_uplaod_flag = True, big_query_flag = True)
 
 print(f'Total run time = {datetime.now() - start_time}')
